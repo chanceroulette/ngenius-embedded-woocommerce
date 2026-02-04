@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.6](https://github.com/network-international/ngenius-woocommerce-plugin/releases/tag/1.3.6)
+
+### Fixed
+
+- **Cache Key Fix**: Fixed cache key collision issue in order recovery flow that was causing declined payment
+  re-attempts to fail on some servers with longer cache timeouts. Orders now properly update from failed to successful
+  status after recovery transactions.
+
 ## [1.3.5](https://github.com/network-international/ngenius-woocommerce-plugin/releases/tag/1.3.5)
 
 ### Fixed
@@ -9,9 +17,11 @@
 ## [1.3.4](https://github.com/network-international/ngenius-woocommerce-plugin/releases/tag/1.3.4)
 
 ### Added
+
 - Added PHP 7.4 support.
 
 ### Changed
+
 - Refactored `add_settings_error` to use WordPress Settings API; removed direct `$wp_settings_errors` manipulation.
 - JS block registration now handles missing/undefined server data in `index.js`.
 - Synced `package.json` version with PHP plugin version.
@@ -23,36 +33,48 @@
 
 ### Fixed
 
-- **Composer Version Issue**: This is a fix for an issue identified in automated testing, as it corrects a problem with the Composer version to ensure compatibility.
+- **Composer Version Issue**: This is a fix for an issue identified in automated testing, as it corrects a problem with
+  the Composer version to ensure compatibility.
 
 ### Added
 
-- **WooCommerce Active Check**: The addition of programmatic checks to verify WooCommerce is active and admin-side notifications are new features or functionalities introduced to the plugin.
+- **WooCommerce Active Check**: The addition of programmatic checks to verify WooCommerce is active and admin-side
+  notifications are new features or functionalities introduced to the plugin.
 
 ### Changed
 
-- **Logging Configuration**: Disabling logging by default modifies an existing behavior to align with data privacy best practices.
+- **Logging Configuration**: Disabling logging by default modifies an existing behavior to align with data privacy best
+  practices.
 
 ## [1.3.2](https://github.com/network-international/ngenius-woocommerce-plugin/releases/tag/1.3.2)
 
 ### Added
 
-- Onboarding Link in Plugin Interface: Added an accessible link within the WooCommerce plugin interface that redirects merchants to the onboarding site for e-commerce payment solutions. The link is prominently placed in the plugin's settings panel, ensuring easy access for merchants to initiate the onboarding process.
+- Onboarding Link in Plugin Interface: Added an accessible link within the WooCommerce plugin interface that redirects
+  merchants to the onboarding site for e-commerce payment solutions. The link is prominently placed in the plugin's
+  settings panel, ensuring easy access for merchants to initiate the onboarding process.
 
 ## [1.3.1](https://github.com/network-international/ngenius-woocommerce-plugin/releases/tag/1.3.1)
 
 ### Changed
+
 - **CSS Improvements**: Adjusted payment icon styling for better compatibility with classic checkout themes.
 
 ## [1.3.0](https://github.com/network-international/ngenius-woocommerce-plugin/releases/tag/1.3.0)
 
 ### Added
-- **Manual Payment Links**: Added functionality to generate and manage manual payment links for enhanced flexibility in transaction processing.
-- **Updated Branding**: Replaced outdated Network logo with the latest version for consistent branding across the plugin.
-- **Dependency Validation**: Implemented automatic checks for international dependencies to ensure seamless compatibility and installation.
+
+- **Manual Payment Links**: Added functionality to generate and manage manual payment links for enhanced flexibility in
+  transaction processing.
+- **Updated Branding**: Replaced outdated Network logo with the latest version for consistent branding across the
+  plugin.
+- **Dependency Validation**: Implemented automatic checks for international dependencies to ensure seamless
+  compatibility and installation.
 
 ### Fixed
-- **Transaction Handling**: Resolved an issue where N-Genius transactions were occasionally missing from orders, improving reliability.
+
+- **Transaction Handling**: Resolved an issue where N-Genius transactions were occasionally missing from orders,
+  improving reliability.
 - **Minor Bug Fixes**: Addressed various small bugs to enhance overall stability and user experience.
 
 ## [1.2.0](https://github.com/network-international/ngenius-woocommerce-plugin/releases/tag/1.2.0)

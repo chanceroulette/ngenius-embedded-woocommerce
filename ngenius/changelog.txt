@@ -1,5 +1,8 @@
 *** N-Genius Online by Network Changelog ***
 
+= 1.3.6 - 2026-02-04 =
+ * Cache Key Fix: Fixed cache key collision issue in order recovery flow that was causing declined payment re-attempts to fail on some servers with longer cache timeouts. Orders now properly update from failed to successful status after recovery transactions.
+
 = 1.3.5 - 2025-12-18 =
  * Fatal Memory Error: Fixed an infinite loop in the WC logger affecting some sites.
 
