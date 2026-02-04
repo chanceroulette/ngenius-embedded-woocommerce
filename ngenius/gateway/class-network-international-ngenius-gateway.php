@@ -515,7 +515,6 @@ class NetworkInternationalNgeniusGateway extends NetworkInternationalNgeniusAbst
         global $wp_session;
 
         $order_id  = $order->get_id();
-        $cache_key = 'ngenius_order_' . $order_id;
 
         // Check if wp_session exists and has ngenius data
         $ngenius_session_data = [];
@@ -524,6 +523,8 @@ class NetworkInternationalNgeniusGateway extends NetworkInternationalNgeniusAbst
         } else {
             $this->log('Missing or incomplete wp_session data for order: ' . $order_id, 'warning');
         }
+
+        $cache_key = 'ngenius_order_' . $ngenius_session_data['reference'] ?? $order_id;
 
         // Prepare the data to be saved
         $data = array_merge(

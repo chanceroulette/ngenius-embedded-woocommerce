@@ -4,7 +4,8 @@
 
 ## Prerequisites
 
-**PHP intl** - Ensure the [PHP intl](https://www.php.net/manual/en/intl.installation.php) extension is installed and enabled on your server.
+**PHP intl** - Ensure the [PHP intl](https://www.php.net/manual/en/intl.installation.php) extension is installed and
+enabled on your server.
 
 ## Installation
 
