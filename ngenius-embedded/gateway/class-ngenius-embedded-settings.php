@@ -6,7 +6,7 @@ add_action('plugins_loaded', function() {
     }
 
     if (!class_exists('WooCommerce')) {
-        return;
+        return;https://claude.ai/project/019e06a8-8670-7018-96f2-a5cebcfc5dcf
     }
 });
 
@@ -88,6 +88,36 @@ class NgeniusEmbeddedSettings extends WC_Settings_API
                 'description' => __('The description which the user sees during checkout.', 'ngenius'),
                 'default'     => __('You will be redirected to payment gateway.', 'ngenius'),
             ),
+            // ============================================================
+            // EMBEDDED MODE SETTINGS (Tappa 2 — added for Web SDK integration)
+            // ============================================================
+            'embedded_mode_section'         => array(
+                'title'       => __('Embedded Mode (Web SDK)', 'ngenius-embedded'),
+                'type'        => 'title',
+                'description' => __('Settings for the embedded checkout experience. Requires a Hosted Session Service Account configured in your N-Genius portal. When OFF, the plugin behaves like the standard Hosted Payment Page (redirect).', 'ngenius-embedded'),
+            ),
+            'embedded_mode'                 => array(
+                'title'       => __('Enable Embedded Mode', 'ngenius-embedded'),
+                'label'       => __('Use Web SDK / Hosted Session instead of redirect', 'ngenius-embedded'),
+                'type'        => 'checkbox',
+                'default'     => 'no',
+                'description' => __('When enabled, customers complete payment on your site without being redirected. Requires Hosted Session API Key below.', 'ngenius-embedded'),
+            ),
+            'threeds_display_mode'          => array(
+                'title'       => __('3DS Challenge Display', 'ngenius-embedded'),
+                'type'        => 'select',
+                'class'       => 'wc-enhanced-select',
+                'options'     => array(
+                    'modal'    => __('Modal overlay (recommended)', 'ngenius-embedded'),
+                    'inline'   => __('Inline iframe', 'ngenius-embedded'),
+                    'redirect' => __('Full-page redirect (fallback)', 'ngenius-embedded'),
+                ),
+                'default'     => 'modal',
+                'description' => __('How to display the bank 3D Secure authentication challenge. Modal is the most user-friendly. Used only when Embedded Mode is enabled.', 'ngenius-embedded'),
+            ),
+            // ============================================================
+            // END EMBEDDED MODE SETTINGS
+            // ============================================================
             'environment'                   => array(
                 'title'   => __('Environment', 'ngenius'),
                 'type'    => 'select',
@@ -157,6 +187,23 @@ class NgeniusEmbeddedSettings extends WC_Settings_API
                 'type'  => 'textarea',
                 'css'   => 'width: 400px;height:50px;',
             ),
+            // ============================================================
+            // HOSTED SESSION CREDENTIALS (Tappa 2 — Web SDK Service Account)
+            // ============================================================
+            'hosted_session_section'        => array(
+                'title'       => __('Hosted Session Credentials (Web SDK)', 'ngenius-embedded'),
+                'type'        => 'title',
+                'description' => __('Separate API Key for the Hosted Session Service Account. Generate this in N-Genius portal: Settings → Integrations → Service Accounts → type "Hosted Session Service Account". Required only when Embedded Mode is enabled.', 'ngenius-embedded'),
+            ),
+            'hosted_session_api_key'        => array(
+                'title'       => __('Hosted Session API Key', 'ngenius-embedded'),
+                'type'        => 'textarea',
+                'css'         => 'width: 400px;height:50px;',
+                'description' => __('API Key from the Hosted Session Service Account on N-Genius portal. Different from the standard API Key above.', 'ngenius-embedded'),
+            ),
+            // ============================================================
+            // END HOSTED SESSION CREDENTIALS
+            // ============================================================
             'curl_http_version'             => array(
                 'title'   => __('HTTP Version', 'ngenius'),
                 'type'    => 'select',
