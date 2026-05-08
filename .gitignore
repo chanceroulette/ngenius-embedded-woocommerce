@@ -123,3 +123,6 @@ out/
 /node_modules/.cache
 node_modules
 ngenius/resources/builds
+
+# Build artifacts
+*.zip
