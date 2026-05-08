@@ -259,6 +259,11 @@ function ngenius_embedded_init_gateway_class()
         $gateway = NgeniusEmbeddedGateway::get_instance();
         $gateway->init_hooks();
     }
+
+    // 🆕 Tappa 3 — Carica la pagina admin di test API (solo per admin)
+    if (is_admin()) {
+        include_once plugin_dir_path(__FILE__) . 'admin/class-ngenius-embedded-test.php';
+    }
 }
 
 function ngenius_embedded_add_gateway_class($gateways)
