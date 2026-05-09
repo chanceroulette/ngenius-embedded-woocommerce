@@ -79,14 +79,14 @@ class NgeniusEmbeddedSettings extends WC_Settings_API
                 'title'       => __('Title', 'ngenius'),
                 'type'        => 'text',
                 'description' => __('The title which the user sees during checkout.', 'ngenius'),
-                'default'     => __('N-Genius Online', 'ngenius'),
+                'default'     => __('Credit / Debit Card', 'ngenius'),
             ),
             'description'                   => array(
                 'title'       => __('Description', 'ngenius'),
                 'type'        => 'textarea',
                 'css'         => 'width: 400px;height:60px;',
                 'description' => __('The description which the user sees during checkout.', 'ngenius'),
-                'default'     => __('You will be redirected to payment gateway.', 'ngenius'),
+                'default'     => __('', 'ngenius'),
             ),
             // ============================================================
             // EMBEDDED MODE SETTINGS (Tappa 2 — added for Web SDK integration)

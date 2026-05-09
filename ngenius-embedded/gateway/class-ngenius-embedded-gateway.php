@@ -422,6 +422,18 @@ class NgeniusEmbeddedGateway extends NgeniusEmbeddedAbstract
      */
     public function process_payment($order_id): array
     {
+        global $woocommerce;
+        $order = wc_get_order($order_id);
+
+        // 🆕 Tappa 5: branch embedded Web SDK
+        if (
+            $this->get_option('embedded_mode') === 'yes'
+            && !empty($_POST['_ngenius_embedded_session_id'])
+        ) {
+            return $this->process_embedded_payment($order);
+        }
+
+        // === Comportamento HPP originale (invariato) ===
         include_once dirname(__FILE__) . '/request/class-ngenius-embedded-gateway-request-authorize.php';
         include_once dirname(__FILE__) . '/request/class-ngenius-embedded-gateway-request-sale.php';
         include_once dirname(__FILE__) . '/request/class-ngenius-embedded-gateway-request-purchase.php';
@@ -430,12 +442,9 @@ class NgeniusEmbeddedGateway extends NgeniusEmbeddedAbstract
         include_once dirname(__FILE__) . '/http/class-ngenius-embedded-gateway-http-sale.php';
         include_once dirname(__FILE__) . '/validator/class-ngenius-embedded-gateway-validator-response.php';
 
-        global $woocommerce;
-        $order       = wc_get_order($order_id);
         $config       = new NgeniusEmbeddedGatewayConfig($this, $order);
-        $token_class = new NgeniusEmbeddedGatewayRequestToken($config);
-        $data        = [];
-
+        $token_class  = new NgeniusEmbeddedGatewayRequestToken($config);
+        $data         = [];
 
         if ($config->is_complete()) {
             $token = $token_class->get_access_token();
@@ -452,9 +461,7 @@ class NgeniusEmbeddedGateway extends NgeniusEmbeddedAbstract
                     $request_http  = new NgeniusEmbeddedGatewayHttpPurchase();
                 }
 
-
                 $validator = new NgeniusEmbeddedGatewayValidatorResponse();
-
                 $tokenRequest = $request_class->build($order);
 
                 $transferClass = new NgeniusHttpTransfer(
@@ -471,7 +478,6 @@ class NgeniusEmbeddedGateway extends NgeniusEmbeddedAbstract
                 }
 
                 $response = $request_http->place_request($transferClass);
-
                 $result = $validator->validate($response);
 
                 if ($result) {
@@ -484,7 +490,6 @@ class NgeniusEmbeddedGateway extends NgeniusEmbeddedAbstract
                 }
             } else {
                 $errorMsg = $token->errors['error'][0];
-
                 if ($errorMsg == '') {
                     $errorMsg = 'Invalid configuration';
                 }
@@ -495,6 +500,169 @@ class NgeniusEmbeddedGateway extends NgeniusEmbeddedAbstract
         }
 
         return $data;
+    }
+
+    /**
+     * 🆕 Tappa 5 — Process payment via Web SDK Hosted Session.
+     *
+     * Called from process_payment() when _ngenius_embedded_session_id is in POST.
+     * Calls N-Genius API /payment/hosted-session/{sessionId} with order data.
+     *
+     * @param WC_Order $order
+     * @return array { result, redirect } per WC standard
+     * @throws Exception
+     */
+    protected function process_embedded_payment($order): array
+    {
+        global $woocommerce;
+
+        // phpcs:ignore WordPress.Security.NonceVerification.Missing
+        $session_id = sanitize_text_field(wp_unslash($_POST['_ngenius_embedded_session_id']));
+
+        if (empty($session_id)) {
+            $this->checkoutErrorThrow('Embedded payment error: missing session ID.');
+        }
+
+        $this->log('[Tappa 5] process_embedded_payment for order #' . $order->get_id() . ' with session ' . substr($session_id, 0, 12) . '...');
+        // 🐞 Debug log forzato (Tappa 5)
+
+        $logger = wc_get_logger();
+        $logger->info(
+            sprintf('[Tappa5] Order #%d session %s...', $order->get_id(), substr($session_id, 0, 12)),
+            ['source' => 'ngenius-embedded-debug']
+        );
+
+        include_once dirname(__FILE__) . '/request/class-ngenius-embedded-gateway-request-hosted-session.php';
+        include_once dirname(__FILE__) . '/http/class-ngenius-embedded-gateway-http-hosted-session.php';
+
+        $config      = new NgeniusEmbeddedGatewayConfig($this, $order);
+        $token_class = new NgeniusEmbeddedGatewayRequestToken($config);
+
+        if (!$config->is_complete()) {
+            $this->checkoutErrorThrow('Error! Invalid N-Genius configuration.');
+        }
+
+        $token = $token_class->get_access_token();
+        if (!$token || is_wp_error($token)) {
+            $errMsg = is_wp_error($token) ? $token->get_error_message() : 'Could not get access token';
+            $this->log('[Tappa 5] Token error: ' . $errMsg, 'error');
+            $this->checkoutErrorThrow('Payment failed: authentication error.');
+        }
+        $config->set_token($token);
+
+        // Build request body (amount, billing, etc. from WC order)
+        $request_class = new NgeniusEmbeddedGatewayRequestHostedSession($config);
+        $built = ["token" => $config->get_token(), "request" => $request_class->get_build_array($order, $session_id)];
+
+        $this->log('[Tappa 5] POST ' . $built['request']['uri']);
+
+        $logger->info(
+            sprintf('[Tappa5] POST %s | Body: %s',
+                $built['request']['uri'],
+                wp_json_encode($built['request']['data'])
+            ),
+            ['source' => 'ngenius-embedded-debug']
+        );
+
+        $transferClass = new NgeniusHttpTransfer(
+            $built['request']['uri'],
+            $config->get_http_version(),
+            $built['request']['method'],
+            $built['request']['data']
+        );
+        $transferClass->setPaymentHeaders($token);
+
+        $request_http = new NgeniusEmbeddedGatewayHttpHostedSession();
+        $response = $request_http->place_request($transferClass);
+
+        if (is_wp_error($response)) {
+            $errMsg = $response->get_error_message();
+            $this->log('[Tappa 5] HTTP error: ' . $errMsg, 'error');
+            $logger->error('[Tappa5] HTTP error: ' . $errMsg, ['source' => 'ngenius-embedded-debug']);
+
+        $logger->info('[Tappa5] Full response: ' . wp_json_encode($response), ['source' => 'ngenius-embedded-debug']);
+            $order->update_status('failed', 'N-Genius embedded error: ' . $errMsg);
+            $this->checkoutErrorThrow($errMsg);
+        }
+
+        $this->log('[Tappa 5] N-Genius response state: ' . ($response['state'] ?? 'unknown'));
+
+        // Save data for our custom table (used by webhook/refund logic)
+        global $wp_session;
+        $wp_session['ngenius'] = [
+            'reference' => $response['reference'] ?? '',
+            'action'    => $response['action'] ?? '',
+            'state'     => $response['state'] ?? '',
+            'status'    => $response['status'] ?? '',
+        ];
+        $this->save_data($order);
+
+        $state = strtoupper($response['state'] ?? '');
+        $orderRef = $response['order_reference'] ?? '';
+        $paymentRef = $response['payment_reference'] ?? '';
+
+        // Save to our DB row (for refund/webhook later)
+        if ($paymentRef) {
+            $this->updateData(
+                ['state' => $state, 'reference' => $orderRef],
+                ['order_id' => $order->get_id()]
+            );
+        }
+
+        // 3DS challenge required → store payment ref + return raw response to frontend
+        // Frontend will call window.NI.handlePaymentResponse() which handles 3DS modal
+        if (!empty($response['requires_3ds'])) {
+            $order->add_order_note('N-Genius: 3DS challenge required (state: ' . $state . ')');
+            $order->update_meta_data('_ngenius_payment_ref', $paymentRef);
+            $order->update_meta_data('_ngenius_order_ref', $orderRef);
+            $order->save();
+
+            // Encode raw response for handlePaymentResponse on frontend
+            $rawJson = $response['raw_json'] ?? wp_json_encode($response['raw']);
+
+            return [
+                'result'                  => 'success',
+                'redirect'                => '#ngenius_3ds',
+                'ngenius_3ds_required'    => true,
+                'ngenius_payment_response' => $rawJson,
+                'ngenius_order_id'        => $order->get_id(),
+            ];
+        }
+
+        // Direct success states (no 3DS needed)
+        if (in_array($state, ['AUTHORISED', 'CAPTURED', 'PURCHASED'], true)) {
+            // Update our custom DB row with capture/payment ref
+            if (!empty($response['payment_reference'])) {
+                $this->updateData(
+                    [
+                        'state'      => $state,
+                        'capture_id' => $response['payment_reference'],
+                    ],
+                    ['order_id' => $order->get_id()]
+                );
+            }
+
+            $order->payment_complete($response['payment_reference'] ?? '');
+            $order->add_order_note(sprintf(
+                'N-Genius embedded payment %s (ref: %s)',
+                strtolower($state),
+                $response['payment_reference'] ?? '-'
+            ));
+            $woocommerce->cart->empty_cart();
+
+            return [
+                'result'   => 'success',
+                'redirect' => $this->get_return_url($order),
+            ];
+        }
+
+        // FAILED / DECLINED / other
+        $failMsg = 'Payment was declined (state: ' . $state . ').';
+        $order->update_status('failed', 'N-Genius embedded: ' . $failMsg);
+        $this->log('[Tappa 5] Payment failed: ' . $failMsg, 'error');
+        $this->checkoutErrorThrow($failMsg);
+
+        return [];
     }
 
     /**
@@ -864,6 +1032,8 @@ class NgeniusEmbeddedGateway extends NgeniusEmbeddedAbstract
                 'hostedSessionApiKey' => $hosted_key,
                 'outletRef'           => $outlet_ref,
                 'embeddedMode'        => true,
+                'pluginUrl'           => plugin_dir_url(dirname(__FILE__)),
+                'shopName'            => get_bloginfo('name'),
                 'debug'               => ($this->get_option('debug') === 'yes'),
             )
         );
@@ -874,13 +1044,24 @@ class NgeniusEmbeddedGateway extends NgeniusEmbeddedAbstract
      *
      * @return string
      */
+
+    /**
+     * Override title to inject inline card brand logos next to gateway name.
+     */
+    public function get_title()
+    {
+        $title = parent::get_title();
+        $plugin_url = plugin_dir_url(dirname(__FILE__));
+        $logos_html = '<span class="ngenius-embedded-brand-logos" style="display:inline-flex;gap:6px;align-items:center;margin-left:10px;vertical-align:middle;">'
+            . '<img src="' . esc_url($plugin_url . 'resources/cards/visa.svg') . '" alt="VISA" style="height:18px;" onerror="this.style.display=\'none\'" />'
+            . '<img src="' . esc_url($plugin_url . 'resources/cards/mastercard.svg') . '" alt="Mastercard" style="height:18px;" onerror="this.style.display=\'none\'" />'
+            . '</span>';
+        return $title . $logos_html;
+    }
+
     public function get_icon()
     {
-        $plugin_url = plugin_dir_url(dirname(__FILE__));
-        $logo_url   = $plugin_url . 'resources/network_logo.png';
-
-        $icon = '<img src="' . esc_url($logo_url) . '" alt="' . esc_attr($this->get_title()) . '" style="height: 18px;vertical-align: middle;" />';
-
-        return apply_filters('woocommerce_gateway_icon', $icon, $this->id);
+        // No icon shown — embedded checkout focuses on the modal experience.
+        return apply_filters('woocommerce_gateway_icon', '', $this->id);
     }
 }

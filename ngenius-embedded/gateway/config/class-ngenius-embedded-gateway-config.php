@@ -24,6 +24,7 @@ class NgeniusEmbeddedGatewayConfig
     public const CAPTURE_ENDPOINT = '/transactions/outlets/%s/orders/%s/payments/%s/captures';
     public const REFUND_ENDPOINT  = '/transactions/outlets/%s/orders/%s/payments/%s/captures/%s/refund';
     public const VOID_ENDPOINT    = '/transactions/outlets/%s/orders/%s/payments/%s/cancel';
+    public const HOSTED_SESSION_ENDPOINT = '/transactions/outlets/%s/payment/hosted-session/%s';
 
     /**
      * Pointer to gateway making the request.
@@ -261,7 +262,29 @@ class NgeniusEmbeddedGatewayConfig
 
         return $this->get_api_url() . $endpoint;
     }
+/**
+     * Gets Hosted Session payment completion URL.
+     *
+     * @param string $sessionId
+     * @return string
+     */
+    public function get_hosted_session_url(string $sessionId): string
+    {
+        $endpoint = sprintf(self::HOSTED_SESSION_ENDPOINT, $this->get_outlet_reference_id(), $sessionId);
+        return $this->get_api_url() . $endpoint;
+    }
 
+    /**
+     * Gets Hosted Session API Key (different from main apiKey)
+     * Used by frontend SDK to generate sessionId.
+     *
+     * @return string
+     */
+    public function get_hosted_session_api_key(): string
+    {
+        return $this->gateway->get_option('hosted_session_api_key');
+    }
+    
     public function get_default_complete_order_status(): string
     {
         return $this->gateway->get_option('default_complete_order_status') ?? "no";

@@ -80,15 +80,23 @@
         var overlay = document.createElement('div');
         overlay.id = 'ngenius-embedded-modal';
         overlay.className = 'ngenius-embedded-overlay';
+        var pluginUrl = (config.pluginUrl || '');
+        var shopName = (config.shopName || 'Modevia');
         overlay.innerHTML =
             '<div class="ngenius-embedded-window">' +
                 '<div class="ngenius-embedded-header">' +
-                    '<h2>Complete your payment</h2>' +
+                    '<div class="ngenius-embedded-shop-name">' + shopName + '</div>' +
+                    '<div class="ngenius-embedded-card-logos">' +
+                        '<img src="' + pluginUrl + 'resources/cards/visa.svg" alt="VISA" onerror="this.style.display=\'none\'" />' +
+                        '<img src="' + pluginUrl + 'resources/cards/mastercard.svg" alt="Mastercard" onerror="this.style.display=\'none\'" />' +
+                    '</div>' +
                     '<button type="button" class="ngenius-embedded-close" aria-label="Close">×</button>' +
                 '</div>' +
                 '<div class="ngenius-embedded-body">' +
-                    '<div id="ngenius-embedded-card-mount" class="ngenius-embedded-card-mount">' +
-                        '<div class="ngenius-embedded-spinner">Loading secure form...</div>' +
+                    '<div class="ngenius-embedded-card-mount-wrap">' +
+                        '<div id="ngenius-embedded-card-mount" class="ngenius-embedded-card-mount">' +
+                            '<div class="ngenius-embedded-spinner">Loading secure form...</div>' +
+                        '</div>' +
                     '</div>' +
                     '<div id="ngenius-embedded-status" class="ngenius-embedded-status"></div>' +
                 '</div>' +
@@ -96,6 +104,7 @@
                     '<button type="button" id="ngenius-embedded-pay-btn" class="ngenius-embedded-pay-btn" disabled>' +
                         'Pay <span id="ngenius-embedded-amount"></span>' +
                     '</button>' +
+                    '<div class="ngenius-embedded-secure">🔒 Secure payment</div>' +
                 '</div>' +
             '</div>';
 
@@ -133,6 +142,15 @@
     // SDK MOUNT: monta iframe carta
     // ================================================================
     function mountCardInput(amount, currency) {
+        // Unmount any previous instance to avoid "already mounted" SDK error
+        if (typeof window.NI !== 'undefined' && typeof window.NI.unMountCardInputs === 'function') {
+            try {
+                window.NI.unMountCardInputs();
+                log('Previous card input unmounted');
+            } catch (e) {
+                log('unMountCardInputs threw, continuing:', e.message);
+            }
+        }
         if (typeof window.NI === 'undefined' || typeof window.NI.mountCardInput !== 'function') {
             logError('NI SDK not available');
             setStatus('Payment form failed to load. Please try again.', 'error');
@@ -150,9 +168,48 @@
         mountPoint.innerHTML = '';
 
         try {
-            window.NI.mountCardInput('ngenius-embedded-card-mount', {
+           window.NI.mountCardInput('ngenius-embedded-card-mount', {
                 apiKey: config.hostedSessionApiKey,
                 outletRef: config.outletRef,
+                language: 'en',
+                style: {
+                    main: {
+                        backgroundColor: '#ffffff',
+                        padding: '0',
+                    },
+                    base: {
+                        color: '#111827',
+                        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                        fontSize: '15px',
+                        fontWeight: '400',
+                        lineHeight: '1.5',
+                        '::placeholder': {
+                            color: '#9ca3af',
+                        },
+                    },
+                    input: {
+                        border: '1px solid #d1d5db',
+                        borderRadius: '8px',
+                        padding: '11px 14px',
+                        marginBottom: '10px',
+                        backgroundColor: '#ffffff',
+                    },
+                    inputError: {
+                        border: '1px solid #ef4444',
+                    },
+                    label: {
+                        color: '#374151',
+                        fontSize: '12px',
+                        fontWeight: '500',
+                        marginBottom: '4px',
+                        textTransform: 'none',
+                    },
+                    error: {
+                        color: '#ef4444',
+                        fontSize: '11px',
+                        marginTop: '2px',
+                    },
+                },
                 onSuccess: function () {
                     log('Card input mounted successfully');
                     setStatus('Enter your card details above', 'info');
@@ -163,8 +220,7 @@
                 },
                 onChangeValidStatus: function (status) {
                     log('Validation status:', status);
-                    var allValid = status.isCVVValid && status.isExpiryValid &&
-                                   status.isNameValid && status.isPanValid;
+                    var allValid = status.isCVVValid && status.isExpiryValid && status.isPanValid;
                     var payBtn = document.getElementById('ngenius-embedded-pay-btn');
                     if (payBtn) payBtn.disabled = !allValid;
                 },
@@ -212,66 +268,40 @@
         });
     }
 
+    /**
+     * Submit the WC checkout form with the sessionId attached as hidden input.
+     * This makes WC run its standard process_checkout(), which calls our
+     * gateway's process_payment(), which sees _ngenius_embedded_session_id and
+     * routes to process_embedded_payment() for completion via N-Genius API.
+     */
     function sendSessionToBackend(sessionId) {
-        var formData = new FormData();
-        formData.append('action', 'ngenius_embedded_complete_payment');
-        formData.append('nonce', config.nonce);
-        // NOTA: order_id sarà 0 in Tappa 4.4 (l'ordine non è ancora creato).
-        // Tappa 5 cambierà il flusso per creare prima l'ordine WC.
-        formData.append('order_id', 0);
-        formData.append('session_id', sessionId);
+        log('Submitting form with session ID:', sessionId.substring(0, 12) + '...');
+        setStatus('Processing payment...', 'info');
 
-        fetch(config.ajaxUrl, {
-            method: 'POST',
-            body: formData,
-            credentials: 'same-origin',
-        })
-        .then(function (res) { return res.json(); })
-        .then(function (json) {
-            log('Backend response', json);
-            // In Tappa 4.4 il backend risponde sempre con error "Order not found"
-            // perché order_id=0. Lo trattiamo come "TEST MODE OK".
-            showTestModeSuccess(sessionId);
-        })
-        .catch(function (err) {
-            logError('Backend call failed', err);
-            // Anche su errore network mostriamo Test Mode (la session è stata generata
-            // con successo dal SDK, che è ciò che vogliamo testare in Tappa 4.4)
-            showTestModeSuccess(sessionId);
-        });
-    }
+        var $ = jQuery;
+        var $form = $('form.checkout');
+        if (!$form.length) {
+            setStatus('Checkout form not found.', 'error');
+            return;
+        }
 
-    function showTestModeSuccess(sessionId) {
-        var body = document.querySelector('.ngenius-embedded-body');
-        var footer = document.querySelector('.ngenius-embedded-footer');
-        if (!body || !footer) return;
+        // Inject hidden input with sessionId
+        $form.find('input[name="_ngenius_embedded_session_id"]').remove();
+        $form.append(
+            $('<input>', {
+                type: 'hidden',
+                name: '_ngenius_embedded_session_id',
+                value: sessionId,
+            })
+        );
 
-        var shortSession = sessionId.substring(0, 12) + '...';
+        // Mark this submit as "embedded passthrough" so our click capture handler
+        // does not block it again.
+        window.__ngeniusEmbeddedAllowSubmit = true;
 
-        body.innerHTML =
-            '<div style="text-align:center;padding:24px 8px;">' +
-                '<div style="font-size:48px;margin-bottom:8px;">✅</div>' +
-                '<h3 style="margin:0 0 12px 0;color:#166534;">TEST MODE — Integration successful</h3>' +
-                '<p style="color:#374151;margin:0 0 16px 0;line-height:1.5;">' +
-                    'The Web SDK integration is working correctly.<br>' +
-                    '<strong>No real payment was processed.</strong><br><br>' +
-                    'Real payment completion will be implemented in <em>Tappa 5</em>.' +
-                '</p>' +
-                '<div style="background:#f3f4f6;padding:10px;border-radius:6px;font-family:monospace;font-size:12px;color:#6b7280;">' +
-                    'Session ID: ' + shortSession +
-                '</div>' +
-            '</div>';
-
-        footer.innerHTML =
-            '<button type="button" class="ngenius-embedded-pay-btn" id="ngenius-embedded-test-close">Close</button>';
-
-        document.getElementById('ngenius-embedded-test-close').onclick = function () {
-            closeModal();
-            // Reset del bottone Place Order su WC checkout (rimuove lo "spinner" se attivo)
-            if (typeof jQuery !== 'undefined' && jQuery('form.checkout').length) {
-                jQuery('form.checkout').removeClass('processing').unblock();
-            }
-        };
+        // Trigger native submit. WC's checkout.js listens on this and runs the
+        // AJAX checkout flow (which calls our process_payment).
+        $form.trigger('submit');
     }
 
     // ================================================================
@@ -306,6 +336,98 @@
     // ================================================================
     // CHECKOUT INTERCEPT: intercetta "Place order" via jQuery hook WC
     // ================================================================
+    /**
+     * Handle 3DS challenge using SDK's handlePaymentResponse.
+     * Mounts 3DS iframe in our modal and completes the auth flow.
+     */
+    function handle3dsChallenge(rawResponseJson, orderId) {
+        if (typeof window.NI === 'undefined' || typeof window.NI.handlePaymentResponse !== 'function') {
+            logError('SDK not loaded for 3DS');
+            setStatus('Could not initialize 3DS. Please try again.', 'error');
+            return;
+        }
+
+        var paymentResponse;
+        try {
+            paymentResponse = (typeof rawResponseJson === 'string')
+                ? JSON.parse(rawResponseJson)
+                : rawResponseJson;
+        } catch (e) {
+            logError('Could not parse 3DS response', e);
+            setStatus('Invalid 3DS response.', 'error');
+            return;
+        }
+
+        // Replace modal body with 3DS mount point
+        var body = document.querySelector('.ngenius-embedded-body');
+        var footer = document.querySelector('.ngenius-embedded-footer');
+        if (body) {
+            body.innerHTML = '<div id="ngenius-3ds-mount" style="width:100%;min-height:400px;"></div>' +
+                '<div id="ngenius-embedded-status" class="ngenius-embedded-status"></div>';
+        }
+        if (footer) footer.style.display = 'none';
+        setStatus('Authenticating with your bank...', 'info');
+
+        log('Calling NI.handlePaymentResponse with 3DS', paymentResponse);
+
+        window.NI.handlePaymentResponse(paymentResponse, {
+            mountId: 'ngenius-3ds-mount',
+            style: { width: '100%', height: '450px' }
+        }).then(function (result) {
+            log('3DS result:', result);
+
+            var status = result && result.status;
+            var SUCCESS_STATES = [
+                window.NI.paymentStates.AUTHORISED,
+                window.NI.paymentStates.CAPTURED,
+                window.NI.paymentStates.PURCHASED,
+            ];
+
+            if (SUCCESS_STATES.indexOf(status) !== -1) {
+                setStatus('✅ Payment successful! Redirecting...', 'success');
+                // Notify backend to finalize the order
+                finalizeOrderAfter3ds(orderId, status, true);
+            } else {
+                setStatus('❌ Payment failed (' + status + ')', 'error');
+                finalizeOrderAfter3ds(orderId, status, false);
+            }
+        }).catch(function (err) {
+            logError('3DS error:', err);
+            setStatus('3DS authentication failed: ' + (err.message || 'unknown'), 'error');
+            finalizeOrderAfter3ds(orderId, 'FAILED', false);
+        });
+    }
+
+    /**
+     * Notify backend to finalize order after 3DS completion.
+     */
+    function finalizeOrderAfter3ds(orderId, finalState, success) {
+        var formData = new FormData();
+        formData.append('action', 'ngenius_embedded_complete_payment');
+        formData.append('nonce', config.nonce);
+        formData.append('order_id', orderId);
+        formData.append('final_state', finalState);
+        formData.append('success', success ? '1' : '0');
+
+        fetch(config.ajaxUrl, {
+            method: 'POST',
+            body: formData,
+            credentials: 'same-origin'
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (json) {
+            log('Finalize response:', json);
+            if (success && json.success && json.data && json.data.redirect) {
+                window.location.href = json.data.redirect;
+            } else if (success) {
+                // Default redirect to thank-you
+                window.location.reload();
+            }
+        })
+        .catch(function (err) {
+            logError('Finalize error:', err);
+        });
+    }
 function setupCheckoutIntercept() {
         if (typeof jQuery === 'undefined') {
             logError('jQuery not available');
@@ -369,6 +491,12 @@ function setupCheckoutIntercept() {
             }
 
             // BLOCCA TUTTO
+            // Se siamo nel passthrough (sessionId già generato), lascia passare
+            if (window.__ngeniusEmbeddedAllowSubmit === true) {
+                log('Passthrough mode active, allowing submit with sessionId');
+                window.__ngeniusEmbeddedAllowSubmit = false; // reset
+                return;
+            }
             log('Embedded mode active, blocking submit and opening modal');
             e.preventDefault();
             e.stopImmediatePropagation();
@@ -396,6 +524,36 @@ function setupCheckoutIntercept() {
             });
 
         }, true); // CAPTURE PHASE = scatta PRIMA degli altri handler
+
+        // Handle 3DS challenge response from WC checkout AJAX
+       // WC 10.x doesn't fire checkout_place_order_success reliably.
+        // Instead, hook into jQuery's global ajaxComplete to intercept the response.
+        $(document).ajaxComplete(function (event, xhr, settings) {
+            // Only care about wc-ajax=checkout responses
+            if (!settings.url || settings.url.indexOf('wc-ajax=checkout') === -1) {
+                return;
+            }
+
+            var response = xhr.responseJSON;
+            if (!response) {
+                try {
+                    response = JSON.parse(xhr.responseText);
+                } catch (e) {
+                    return;
+                }
+            }
+
+            log('checkout AJAX response:', response);
+
+            if (response && response.ngenius_3ds_required && response.ngenius_payment_response) {
+                log('3DS required, handling via SDK');
+                // Stop WC from doing its default redirect
+                if (response.redirect) {
+                    response.redirect = '#ngenius_3ds_handled';
+                }
+                handle3dsChallenge(response.ngenius_payment_response, response.ngenius_order_id);
+            }
+        });
 
         log('Checkout intercept registered (click capture on Place Order button)');
     }
