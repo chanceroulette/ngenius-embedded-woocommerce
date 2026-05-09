@@ -141,7 +141,8 @@
     // ================================================================
     // SDK MOUNT: monta iframe carta
     // ================================================================
-    function mountCardInput(amount, currency) {
+    function mountCardInput(amount, currency, mountId) {
+        mountId = mountId || 'ngenius-embedded-card-mount';
         // Unmount any previous instance to avoid "already mounted" SDK error
         if (typeof window.NI !== 'undefined' && typeof window.NI.unMountCardInputs === 'function') {
             try {
@@ -164,11 +165,12 @@
             amountEl.textContent = currency + ' ' + amount;
         }
 
-        var mountPoint = document.getElementById('ngenius-embedded-card-mount');
+        var mountPoint = document.getElementById(mountId);
+        if (!mountPoint) { logError('Mount point not found:', mountId); return; }
         mountPoint.innerHTML = '';
 
         try {
-           window.NI.mountCardInput('ngenius-embedded-card-mount', {
+           window.NI.mountCardInput(mountId, {
                 apiKey: config.hostedSessionApiKey,
                 outletRef: config.outletRef,
                 language: 'en',
@@ -190,8 +192,8 @@
                     input: {
                         border: '1px solid #d1d5db',
                         borderRadius: '8px',
-                        padding: '11px 14px',
-                        marginBottom: '10px',
+                        padding: '12px 14px',
+                        marginBottom: '18px',
                         backgroundColor: '#ffffff',
                     },
                     inputError: {
@@ -221,6 +223,7 @@
                 onChangeValidStatus: function (status) {
                     log('Validation status:', status);
                     var allValid = status.isCVVValid && status.isExpiryValid && status.isPanValid;
+                    inlineFieldsValid = allValid;
                     var payBtn = document.getElementById('ngenius-embedded-pay-btn');
                     if (payBtn) payBtn.disabled = !allValid;
                 },
@@ -358,6 +361,12 @@
             return;
         }
 
+        // Smonta SDK inline (se presente) per evitare conflitto apple-spinner
+        safeUnmountInline();
+
+        // Apri modal SOLO per il 3DS challenge (in caso siamo nel flow inline)
+        openModal();
+
         // Replace modal body with 3DS mount point
         var body = document.querySelector('.ngenius-embedded-body');
         var footer = document.querySelector('.ngenius-embedded-footer');
@@ -428,6 +437,145 @@
             logError('Finalize error:', err);
         });
     }
+// ============================================================
+// INLINE MOUNT — gestisce ciclo mount/unmount sincronizzato con WC update_checkout
+// ============================================================
+
+var inlineFieldsValid = false;
+var inlineMounted = false;
+
+function setInlineStatus(msg, type) {
+    var el = document.getElementById('ngenius-embedded-inline-status');
+    if (!el) return;
+    if (!msg) {
+        el.style.display = 'none';
+        el.textContent = '';
+        return;
+    }
+    el.style.display = 'block';
+    el.textContent = msg;
+    el.className = 'ngenius-embedded-inline-status' + (type ? ' is-' + type : '');
+}
+
+function isOurMethodSelected() {
+    if (typeof jQuery === 'undefined') return false;
+    var $checked = jQuery('input[name="payment_method"]:checked');
+    return $checked.length && $checked.val() === GATEWAY_ID;
+}
+
+function safeUnmountInline() {
+    // Chiamata documentata da N-Genius per smontare prima di rimontare
+    if (typeof window.NI !== 'undefined' && typeof window.NI.unMountCardInputs === 'function') {
+        try {
+            window.NI.unMountCardInputs();
+            log('SDK unmounted (cleanup before remount)');
+        } catch (e) {
+            log('unMountCardInputs threw on cleanup:', e.message);
+        }
+    }
+    inlineMounted = false;
+    inlineFieldsValid = false;
+}
+
+function mountInline() {
+    if (!isOurMethodSelected()) return;
+
+    var mountEl = document.getElementById('ngenius-embedded-card-mount-inline');
+    if (!mountEl) {
+        log('Inline mount point not in DOM');
+        return;
+    }
+
+    // Cleanup di eventuale mount precedente (dopo update_checkout WC)
+    safeUnmountInline();
+
+    log('Mounting SDK inline...');
+    setInlineStatus('Loading secure form...', 'info');
+
+    loadSdk(function (err) {
+        if (err) {
+            logError('SDK load failed for inline mount', err);
+            setInlineStatus('Could not load secure payment form. Please try again.', 'error');
+            return;
+        }
+        var data = getOrderDataFromCheckout();
+        if (!data) {
+            log('No order data, aborting inline mount');
+            return;
+        }
+        try {
+            mountCardInput(data.amount, data.currency, 'ngenius-embedded-card-mount-inline');
+            inlineMounted = true;
+            setInlineStatus(null);
+            log('Inline mount complete');
+        } catch (e) {
+            logError('Mount error:', e);
+            setInlineStatus('Could not initialize secure form.', 'error');
+        }
+    });
+}
+
+function setupInlineMount() {
+    if (typeof jQuery === 'undefined') return;
+    var $ = jQuery;
+
+    // WC rigenera il DOM dopo ogni update_checkout (cambio metodo, indirizzo, ecc.)
+    // dobbiamo unmount + remount per evitare "container not present" / "apple-spinner already used"
+    $(document.body).on('updated_checkout', function () {
+        log('updated_checkout: remounting if needed');
+        if (isOurMethodSelected()) {
+            // Aspetta che WC abbia finito di rigenerare il DOM
+            setTimeout(mountInline, 150);
+        } else {
+            safeUnmountInline();
+        }
+    });
+
+    // Cambio radio button
+    $(document).on('change', 'input[name="payment_method"]', function () {
+        log('payment_method changed:', $(this).val());
+        if (isOurMethodSelected()) {
+            setTimeout(mountInline, 100);
+        } else {
+            safeUnmountInline();
+        }
+    });
+
+    // Mount iniziale (caso di refresh con metodo gia selezionato)
+    setTimeout(function () {
+        if (isOurMethodSelected()) mountInline();
+    }, 300);
+}
+
+function generateSessionAndSubmit($form) {
+    if (typeof window.NI === 'undefined' || typeof window.NI.generateSessionId !== 'function') {
+        setInlineStatus('Payment system not ready. Please refresh.', 'error');
+        $form.removeClass('processing').unblock();
+        return;
+    }
+
+    setInlineStatus('Generating secure session...', 'info');
+
+    window.NI.generateSessionId().then(function (response) {
+        var sessionId = response && response.session_id;
+        if (!sessionId) {
+            setInlineStatus('Could not generate payment session.', 'error');
+            $form.removeClass('processing').unblock();
+            return;
+        }
+        log('SessionId generated, submitting form');
+        setInlineStatus('Processing payment...', 'info');
+        $form.find('input[name="_ngenius_embedded_session_id"]').remove();
+        $form.append('<input type="hidden" name="_ngenius_embedded_session_id" value="' + sessionId + '" />');
+        window.__ngeniusEmbeddedAllowSubmit = true;
+        $form.find('#place_order, button[name="woocommerce_checkout_place_order"]').first().trigger('click');
+    }).catch(function (err) {
+        logError('generateSessionId failed', err);
+        setInlineStatus('Card details invalid or expired. Please re-enter.', 'error');
+        $form.removeClass('processing').unblock();
+    });
+}
+
 function setupCheckoutIntercept() {
         if (typeof jQuery === 'undefined') {
             logError('jQuery not available');
@@ -497,7 +645,7 @@ function setupCheckoutIntercept() {
                 window.__ngeniusEmbeddedAllowSubmit = false; // reset
                 return;
             }
-            log('Embedded mode active, blocking submit and opening modal');
+            log('Embedded mode active, blocking default submit');
             e.preventDefault();
             e.stopImmediatePropagation();
             e.stopPropagation();
@@ -511,7 +659,20 @@ function setupCheckoutIntercept() {
                 return;
             }
 
-            // Apri modal
+            // INLINE FLOW: iframe gia mounted nella pagina
+            if (inlineMounted) {
+                log('Inline flow: generating sessionId from mounted iframe');
+                if (!inlineFieldsValid) {
+                    setInlineStatus('Please complete all card fields.', 'error');
+                    $form.removeClass('processing').unblock();
+                    return;
+                }
+                generateSessionAndSubmit($form);
+                return;
+            }
+
+            // FALLBACK MODAL (se inline mount fallito per qualche motivo)
+            log('Modal fallback flow');
             openModal();
             setStatus('Loading secure payment form...', 'info');
 
@@ -563,6 +724,7 @@ function setupCheckoutIntercept() {
     // ================================================================
     function init() {
         log('Frontend script loaded. Embedded mode:', config.embeddedMode);
+        setupInlineMount();
         setupCheckoutIntercept();
     }
 

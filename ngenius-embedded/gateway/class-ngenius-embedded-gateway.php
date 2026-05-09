@@ -70,8 +70,8 @@ class NgeniusEmbeddedGateway extends NgeniusEmbeddedAbstract
         $this->init_form_fields();
         $this->init_settings();
         // Load settings
-        $this->title = $this->get_option('title', __('N-Genius Embedded', 'ngenius'));
-        $this->description = $this->get_option('description', __('Pay securely via N-Genius Embedded.', 'ngenius'));
+        $this->title = $this->get_option('title', __('Credit / Debit Card', 'ngenius'));
+        $this->description = $this->get_option('description', '');
         $this->enabled = $this->get_option('enabled', 'no');
     }
 
@@ -394,6 +394,14 @@ class NgeniusEmbeddedGateway extends NgeniusEmbeddedAbstract
         parent::payment_fields();
         if (isset($html->html)) {
             echo esc_html($html->html);
+        }
+
+        // Mount point inline per il SDK iframe (visibile quando radio selezionata)
+        if ($this->get_option('embedded_mode') === 'yes') {
+            echo '<div class="ngenius-embedded-inline-wrap">';
+            echo '<div id="ngenius-embedded-card-mount-inline" class="ngenius-embedded-card-mount-inline"></div>';
+            echo '<div id="ngenius-embedded-inline-status" class="ngenius-embedded-inline-status" style="display:none;"></div>';
+            echo '</div>';
         }
     }
 
