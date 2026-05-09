@@ -1,0 +1,224 @@
+/**
+ * N-Genius Embedded — Modal styles
+ * 
+ * Modal a tutto schermo con overlay scuro e finestra centrale
+ * che ospita il form carta embedded (iframe N-Genius).
+ */
+
+/* ================================================================
+   OVERLAY — sfondo semi-trasparente, fissa lo schermo
+   ================================================================ */
+.ngenius-embedded-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(2px);
+    z-index: 999999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    box-sizing: border-box;
+    animation: ngenius-fade-in 0.2s ease-out;
+}
+
+.ngenius-embedded-overlay.is-visible {
+    display: flex;
+}
+
+@keyframes ngenius-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* ================================================================
+   WINDOW — la finestra centrale che contiene il form
+   ================================================================ */
+.ngenius-embedded-window {
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    width: 100%;
+    max-width: 480px;
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    animation: ngenius-slide-up 0.3s ease-out;
+}
+
+@keyframes ngenius-slide-up {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+/* ================================================================
+   HEADER — titolo + bottone chiudi
+   ================================================================ */
+.ngenius-embedded-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.ngenius-embedded-header h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #111827;
+    line-height: 1.2;
+}
+
+.ngenius-embedded-close {
+    background: none;
+    border: none;
+    font-size: 28px;
+    line-height: 1;
+    color: #6b7280;
+    cursor: pointer;
+    padding: 0 4px;
+    transition: color 0.15s;
+}
+
+.ngenius-embedded-close:hover {
+    color: #111827;
+}
+
+/* ================================================================
+   BODY — area centrale con form carta + status
+   ================================================================ */
+.ngenius-embedded-body {
+    padding: 24px;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 280px;
+}
+
+.ngenius-embedded-card-mount {
+    min-height: 200px;
+    margin-bottom: 16px;
+}
+
+/* Stile dell'iframe N-Genius una volta montato */
+.ngenius-embedded-card-mount iframe {
+    width: 100%;
+    border: none;
+    background: transparent;
+}
+
+/* ================================================================
+   SPINNER iniziale (mentre carica SDK)
+   ================================================================ */
+.ngenius-embedded-spinner {
+    text-align: center;
+    padding: 40px 20px;
+    color: #6b7280;
+    font-size: 14px;
+}
+
+.ngenius-embedded-spinner::before {
+    content: '';
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid #e5e7eb;
+    border-top-color: #2563eb;
+    border-radius: 50%;
+    animation: ngenius-spin 0.8s linear infinite;
+    margin-right: 10px;
+    vertical-align: middle;
+}
+
+@keyframes ngenius-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ================================================================
+   STATUS — area messaggi (info/success/error)
+   ================================================================ */
+.ngenius-embedded-status {
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    line-height: 1.4;
+    margin-top: 8px;
+    min-height: 20px;
+    display: none;
+}
+
+.ngenius-embedded-status:not(:empty) {
+    display: block;
+}
+
+.ngenius-embedded-status.is-info {
+    background: #eff6ff;
+    color: #1e40af;
+    border: 1px solid #dbeafe;
+}
+
+.ngenius-embedded-status.is-success {
+    background: #f0fdf4;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+}
+
+.ngenius-embedded-status.is-error {
+    background: #fef2f2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+}
+
+/* ================================================================
+   FOOTER — bottone Pay
+   ================================================================ */
+.ngenius-embedded-footer {
+    padding: 16px 24px 24px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.ngenius-embedded-pay-btn {
+    width: 100%;
+    background: #111827;
+    color: #ffffff;
+    border: none;
+    padding: 14px 24px;
+    font-size: 16px;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+}
+
+.ngenius-embedded-pay-btn:hover:not(:disabled) {
+    background: #1f2937;
+}
+
+.ngenius-embedded-pay-btn:disabled {
+    background: #9ca3af;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+/* ================================================================
+   MOBILE — adattamento sotto 480px
+   ================================================================ */
+@media (max-width: 480px) {
+    .ngenius-embedded-overlay {
+        padding: 0;
+        align-items: stretch;
+    }
+
+    .ngenius-embedded-window {
+        max-width: 100%;
+        max-height: 100vh;
+        height: 100%;
+        border-radius: 0;
+    }
+}

@@ -112,11 +112,15 @@ class NgeniusEmbeddedGateway extends NgeniusEmbeddedAbstract
     /**
      * Initialize module hooks
      */
-    public function init_hooks()
+     public function init_hooks()
     {
         add_action('init', array($this, 'ngenius_cron_task'));
         add_action('woocommerce_api_ngenius_embedded', array($this, 'update_ngenius_response'));
         add_action('upgrader_process_complete', array($this, 'clear_cron_on_update'), 10, 2); // New: Clear cron on update
+
+        // 🆕 Tappa 4 — Carica JS/CSS embedded sul frontend (solo checkout)
+        add_action('wp_enqueue_scripts', array($this, 'enqueue_embedded_assets'));
+
         if (is_admin()) {
             add_action(
                 'woocommerce_update_options_payment_gateways_' . $this->id,
@@ -788,6 +792,83 @@ class NgeniusEmbeddedGateway extends NgeniusEmbeddedAbstract
             $eMailer->customer_invoice($order);
         }
     }
+
+/**
+     * 🆕 Tappa 4 — Carica JS/CSS embedded checkout sul frontend.
+     *
+     * Si attiva solo se:
+     *   - siamo sulla pagina checkout (non sulla "thank you")
+     *   - embedded_mode è ON nelle settings
+     *   - hosted_session_api_key e outletRef sono configurati
+     *
+     * Passa al JS le credenziali necessarie via window.NgeniusEmbeddedConfig.
+     *
+     * @return void
+     */
+    public function enqueue_embedded_assets()
+    {
+        // Esci se non siamo sul checkout
+        if (!function_exists('is_checkout') || !is_checkout() || is_order_received_page()) {
+            return;
+        }
+
+        // Esci se embedded mode non è attivo
+        if ($this->get_option('embedded_mode') !== 'yes') {
+            return;
+        }
+
+        // Recupera credenziali
+        $hosted_key  = trim($this->get_option('hosted_session_api_key'));
+        $outlet_ref  = trim($this->get_option('outletRef'));
+        $environment = $this->get_option('environment', 'live');
+
+        // Esci silenziosamente se mancano credenziali (no errori al cliente)
+        if (empty($hosted_key) || empty($outlet_ref)) {
+            return;
+        }
+
+        // URL SDK in base all'ambiente
+        $sdk_url = ($environment === 'uat')
+            ? 'https://paypage.sandbox.ngenius-payments.com/hosted-sessions/sdk.js'
+            : 'https://paypage.ngenius-payments.com/hosted-sessions/sdk.js';
+
+        // URL base del plugin per asset
+        $plugin_url = plugin_dir_url(dirname(__FILE__));
+        $version    = defined('NGENIUS_EMBEDDED_VERSION') ? NGENIUS_EMBEDDED_VERSION : '1.0.0';
+
+        // Carica CSS
+        wp_enqueue_style(
+            'ngenius-embedded-checkout',
+            $plugin_url . 'assets/css/embedded-checkout.css',
+            array(),
+            $version
+        );
+
+        // Carica JS (in footer, no dipendenze)
+        wp_enqueue_script(
+            'ngenius-embedded-checkout',
+            $plugin_url . 'assets/js/embedded-checkout.js',
+            array(),
+            $version,
+            true
+        );
+
+        // Passa configurazione al JS via window.NgeniusEmbeddedConfig
+        wp_localize_script(
+            'ngenius-embedded-checkout',
+            'NgeniusEmbeddedConfig',
+            array(
+                'ajaxUrl'             => admin_url('admin-ajax.php'),
+                'nonce'               => wp_create_nonce('ngenius_embedded_nonce'),
+                'sdkUrl'              => $sdk_url,
+                'hostedSessionApiKey' => $hosted_key,
+                'outletRef'           => $outlet_ref,
+                'embeddedMode'        => true,
+                'debug'               => ($this->get_option('debug') === 'yes'),
+            )
+        );
+    }
+
     /**
      * Display custom payment method icon.
      *

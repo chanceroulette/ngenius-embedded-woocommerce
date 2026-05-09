@@ -264,6 +264,10 @@ function ngenius_embedded_init_gateway_class()
     if (is_admin()) {
         include_once plugin_dir_path(__FILE__) . 'admin/class-ngenius-embedded-test.php';
     }
+
+    // 🆕 Tappa 4 — Carica gli endpoint AJAX per il checkout embedded
+    // (caricato sempre, sia frontend che admin, perché AJAX gira su admin-ajax.php)
+    include_once plugin_dir_path(__FILE__) . 'gateway/class-ngenius-embedded-ajax.php';
 }
 
 function ngenius_embedded_add_gateway_class($gateways)
