@@ -166,40 +166,26 @@
                 language: 'en',
                 style: {
                     main: {
-                        backgroundColor: '#ffffff',
+                        backgroundColor: 'transparent',
                         padding: '0',
                     },
                     base: {
                         color: '#111827',
                         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                         fontSize: '15px',
-                        fontWeight: '400',
-                        lineHeight: '1.5',
-                        '::placeholder': {
-                            color: '#9ca3af',
-                        },
-                    },
-                    input: {
-                        border: '1px solid #d1d5db',
-                        borderRadius: '8px',
+                        fontWeight: '500',
+                        height: '48px',
+                        borderStyle: 'solid',
+                        borderWidth: '1px',
+                        borderColor: '#e5e7eb',
+                        borderRadius: '10px',
                         padding: '12px 14px',
-                        marginBottom: '18px',
                         backgroundColor: '#ffffff',
                     },
-                    inputError: {
-                        border: '1px solid #ef4444',
-                    },
-                    label: {
-                        color: '#374151',
-                        fontSize: '12px',
-                        fontWeight: '500',
-                        marginBottom: '4px',
-                        textTransform: 'none',
-                    },
-                    error: {
-                        color: '#ef4444',
-                        fontSize: '11px',
-                        marginTop: '2px',
+                    input: {},
+                    invalid: {
+                        borderColor: '#dc2626',
+                        color: '#dc2626',
                     },
                 },
                 onSuccess: function () {
