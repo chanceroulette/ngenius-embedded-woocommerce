@@ -46,20 +46,15 @@
     // ================================================================
     function loadSdk(callback) {
         if (SDK_LOADED && typeof window.NI !== 'undefined') {
-            log('SDK already loaded');
             callback(null);
             return;
         }
-
-        log('Loading SDK from', config.sdkUrl);
-
         var script = document.createElement('script');
         script.src = config.sdkUrl;
         script.async = true;
 
         script.onload = function () {
             SDK_LOADED = true;
-            log('SDK loaded successfully');
             callback(null);
         };
 
@@ -147,9 +142,7 @@
         if (typeof window.NI !== 'undefined' && typeof window.NI.unMountCardInputs === 'function') {
             try {
                 window.NI.unMountCardInputs();
-                log('Previous card input unmounted');
             } catch (e) {
-                log('unMountCardInputs threw, continuing:', e.message);
             }
         }
         if (typeof window.NI === 'undefined' || typeof window.NI.mountCardInput !== 'function') {
@@ -157,9 +150,6 @@
             setStatus('Payment form failed to load. Please try again.', 'error');
             return;
         }
-
-        log('Mounting card input', amount, currency);
-
         var amountEl = document.getElementById('ngenius-embedded-amount');
         if (amountEl) {
             amountEl.textContent = currency + ' ' + amount;
@@ -213,15 +203,15 @@
                     },
                 },
                 onSuccess: function () {
-                    log('Card input mounted successfully');
                     setStatus('Enter your card details above', 'info');
+                    var mountEl = document.getElementById('ngenius-embedded-card-mount-inline');
+                    if (mountEl) mountEl.classList.add('is-loaded');
                 },
                 onFail: function (err) {
                     logError('Card input mount failed', err);
                     setStatus('Could not load secure card form. Please try again.', 'error');
                 },
                 onChangeValidStatus: function (status) {
-                    log('Validation status:', status);
                     var allValid = status.isCVVValid && status.isExpiryValid && status.isPanValid;
                     inlineFieldsValid = allValid;
                     var payBtn = document.getElementById('ngenius-embedded-pay-btn');
@@ -254,8 +244,6 @@
         }
 
         window.NI.generateSessionId().then(function (response) {
-            log('Session ID generated', response);
-
             if (!response || !response.session_id) {
                 setStatus('Could not generate session. Please try again.', 'error');
                 if (payBtn) payBtn.disabled = false;
@@ -314,7 +302,6 @@
         // WooCommerce mostra il totale in .order-total .woocommerce-Price-amount
         var totalEl = document.querySelector('.order-total .woocommerce-Price-amount');
         if (!totalEl) {
-            log('Could not find total element');
             return null;
         }
 
@@ -327,9 +314,6 @@
 
         var currencyEl = totalEl.querySelector('.woocommerce-Price-currencySymbol');
         var currency = currencyEl ? currencyEl.textContent.trim() : '';
-
-        log('Extracted from checkout DOM:', { amount: amount, currency: currency, raw: raw });
-
         return {
             amount: amount,
             currency: currency,
@@ -371,20 +355,15 @@
         var body = document.querySelector('.ngenius-embedded-body');
         var footer = document.querySelector('.ngenius-embedded-footer');
         if (body) {
-            body.innerHTML = '<div id="ngenius-3ds-mount" style="width:100%;min-height:400px;"></div>' +
+            body.innerHTML = '<div id="ngenius-3ds-mount" style="width:100%;min-height:550px;"></div>' +
                 '<div id="ngenius-embedded-status" class="ngenius-embedded-status"></div>';
         }
         if (footer) footer.style.display = 'none';
         setStatus('Authenticating with your bank...', 'info');
-
-        log('Calling NI.handlePaymentResponse with 3DS', paymentResponse);
-
         window.NI.handlePaymentResponse(paymentResponse, {
             mountId: 'ngenius-3ds-mount',
-            style: { width: '100%', height: '450px' }
+            style: { width: '100%', height: '600px' }
         }).then(function (result) {
-            log('3DS result:', result);
-
             var status = result && result.status;
             var SUCCESS_STATES = [
                 window.NI.paymentStates.AUTHORISED,
@@ -425,16 +404,31 @@
         })
         .then(function (r) { return r.json(); })
         .then(function (json) {
-            log('Finalize response:', json);
             if (success && json.success && json.data && json.data.redirect) {
                 window.location.href = json.data.redirect;
             } else if (success) {
                 // Default redirect to thank-you
                 window.location.reload();
+            } else {
+                // Failed/cancelled 3DS: close modal, reset form, reload checkout
+                closeModal();
+                var jform = jQuery('form.checkout');
+                jform.removeClass('processing').unblock();
+                window.__ngeniusEmbeddedAllowSubmit = false;
+                // Use redirect from backend if provided, otherwise reload
+                if (json && json.data && json.data.redirect) {
+                    window.location.href = json.data.redirect;
+                } else {
+                    window.location.reload();
+                }
             }
         })
         .catch(function (err) {
             logError('Finalize error:', err);
+            closeModal();
+            var jform = jQuery('form.checkout');
+            jform.removeClass('processing').unblock();
+            window.location.reload();
         });
     }
 // ============================================================
@@ -470,7 +464,6 @@ function safeUnmountInline() {
             window.NI.unMountCardInputs();
             log('SDK unmounted (cleanup before remount)');
         } catch (e) {
-            log('unMountCardInputs threw on cleanup:', e.message);
         }
     }
     inlineMounted = false;
@@ -482,14 +475,11 @@ function mountInline() {
 
     var mountEl = document.getElementById('ngenius-embedded-card-mount-inline');
     if (!mountEl) {
-        log('Inline mount point not in DOM');
         return;
     }
 
     // Cleanup di eventuale mount precedente (dopo update_checkout WC)
     safeUnmountInline();
-
-    log('Mounting SDK inline...');
     setInlineStatus('Loading secure form...', 'info');
 
     loadSdk(function (err) {
@@ -500,14 +490,12 @@ function mountInline() {
         }
         var data = getOrderDataFromCheckout();
         if (!data) {
-            log('No order data, aborting inline mount');
             return;
         }
         try {
             mountCardInput(data.amount, data.currency, 'ngenius-embedded-card-mount-inline');
             inlineMounted = true;
             setInlineStatus(null);
-            log('Inline mount complete');
         } catch (e) {
             logError('Mount error:', e);
             setInlineStatus('Could not initialize secure form.', 'error');
@@ -522,7 +510,6 @@ function setupInlineMount() {
     // WC rigenera il DOM dopo ogni update_checkout (cambio metodo, indirizzo, ecc.)
     // dobbiamo unmount + remount per evitare "container not present" / "apple-spinner already used"
     $(document.body).on('updated_checkout', function () {
-        log('updated_checkout: remounting if needed');
         if (isOurMethodSelected()) {
             // Aspetta che WC abbia finito di rigenerare il DOM
             setTimeout(mountInline, 150);
@@ -563,7 +550,6 @@ function generateSessionAndSubmit($form) {
             $form.removeClass('processing').unblock();
             return;
         }
-        log('SessionId generated, submitting form');
         setInlineStatus('Processing payment...', 'info');
         $form.find('input[name="_ngenius_embedded_session_id"]').remove();
         $form.append('<input type="hidden" name="_ngenius_embedded_session_id" value="' + sessionId + '" />');
@@ -625,27 +611,21 @@ function setupCheckoutIntercept() {
 
             // Verifica metodo selezionato
             var selectedMethod = $form.find('input[name="payment_method"]:checked').val();
-            log('Selected method:', selectedMethod);
-
             if (selectedMethod !== GATEWAY_ID) {
-                log('Not our gateway, allowing default flow');
                 return;
             }
 
             // Verifica embedded mode (PHP passa '1' / '' invece di true / false)
             if (!config.embeddedMode || config.embeddedMode === '0' || config.embeddedMode === '') {
-                log('Embedded mode is off, allowing HPP flow');
                 return;
             }
 
             // BLOCCA TUTTO
             // Se siamo nel passthrough (sessionId già generato), lascia passare
             if (window.__ngeniusEmbeddedAllowSubmit === true) {
-                log('Passthrough mode active, allowing submit with sessionId');
                 window.__ngeniusEmbeddedAllowSubmit = false; // reset
                 return;
             }
-            log('Embedded mode active, blocking default submit');
             e.preventDefault();
             e.stopImmediatePropagation();
             e.stopPropagation();
@@ -661,7 +641,6 @@ function setupCheckoutIntercept() {
 
             // INLINE FLOW: iframe gia mounted nella pagina
             if (inlineMounted) {
-                log('Inline flow: generating sessionId from mounted iframe');
                 if (!inlineFieldsValid) {
                     setInlineStatus('Please complete all card fields.', 'error');
                     $form.removeClass('processing').unblock();
@@ -672,7 +651,6 @@ function setupCheckoutIntercept() {
             }
 
             // FALLBACK MODAL (se inline mount fallito per qualche motivo)
-            log('Modal fallback flow');
             openModal();
             setStatus('Loading secure payment form...', 'info');
 
@@ -703,11 +681,7 @@ function setupCheckoutIntercept() {
                     return;
                 }
             }
-
-            log('checkout AJAX response:', response);
-
             if (response && response.ngenius_3ds_required && response.ngenius_payment_response) {
-                log('3DS required, handling via SDK');
                 // Stop WC from doing its default redirect
                 if (response.redirect) {
                     response.redirect = '#ngenius_3ds_handled';
@@ -723,7 +697,6 @@ function setupCheckoutIntercept() {
     // INIT
     // ================================================================
     function init() {
-        log('Frontend script loaded. Embedded mode:', config.embeddedMode);
         setupInlineMount();
         setupCheckoutIntercept();
     }

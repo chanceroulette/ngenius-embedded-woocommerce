@@ -22,7 +22,7 @@
     border-radius: 16px;
     width: 100%;
     max-width: 600px;
-    max-height: calc(100vh - 32px);
+    max-height: 96vh;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -202,7 +202,7 @@
 
     .ngenius-embedded-window {
         max-width: 100%;
-        max-height: 95vh;
+        max-height: 98vh;
         border-radius: 16px 16px 0 0;
     }
 
@@ -275,7 +275,7 @@
 @media (max-width: 419px) {
     #ngenius-embedded-card-mount-inline,
     #ngenius-embedded-card-mount-inline iframe {
-        min-height: 460px !important;
+        min-height: 380px !important;
     }
 }
 
@@ -308,4 +308,32 @@
 .ngenius-embedded-inline-status.is-success {
     background: #ecfdf5;
     color: #065f46;
+}
+
+
+/* 3DS challenge mount: prende altezza disponibile nel modal */
+#ngenius-3ds-mount {
+    width: 100%;
+    min-height: 550px;
+}
+
+#ngenius-3ds-mount iframe {
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 550px !important;
+    border: 0;
+}
+
+@media (max-width: 600px) {
+    #ngenius-3ds-mount,
+    #ngenius-3ds-mount iframe {
+        min-height: 600px !important;
+    }
+}
+
+
+/* When SDK is loaded, stop the shimmer animation */
+#ngenius-embedded-card-mount-inline.is-loaded {
+    animation: none !important;
+    background: transparent !important;
 }

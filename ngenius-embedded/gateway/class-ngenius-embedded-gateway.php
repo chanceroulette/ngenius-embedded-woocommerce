@@ -120,6 +120,7 @@ class NgeniusEmbeddedGateway extends NgeniusEmbeddedAbstract
 
         // 🆕 Tappa 4 — Carica JS/CSS embedded sul frontend (solo checkout)
         add_action('wp_enqueue_scripts', array($this, 'enqueue_embedded_assets'));
+        add_action('wp_head', array($this, 'preload_sdk'), 1);
 
         if (is_admin()) {
             add_action(
@@ -433,7 +434,7 @@ class NgeniusEmbeddedGateway extends NgeniusEmbeddedAbstract
         global $woocommerce;
         $order = wc_get_order($order_id);
 
-        // 🆕 Tappa 5: branch embedded Web SDK
+        // Embedded Web SDK branch (Hosted Session)
         if (
             $this->get_option('embedded_mode') === 'yes'
             && !empty($_POST['_ngenius_embedded_session_id'])
@@ -511,7 +512,7 @@ class NgeniusEmbeddedGateway extends NgeniusEmbeddedAbstract
     }
 
     /**
-     * 🆕 Tappa 5 — Process payment via Web SDK Hosted Session.
+     * Process payment via Web SDK Hosted Session (embedded mode).
      *
      * Called from process_payment() when _ngenius_embedded_session_id is in POST.
      * Calls N-Genius API /payment/hosted-session/{sessionId} with order data.
@@ -531,12 +532,12 @@ class NgeniusEmbeddedGateway extends NgeniusEmbeddedAbstract
             $this->checkoutErrorThrow('Embedded payment error: missing session ID.');
         }
 
-        $this->log('[Tappa 5] process_embedded_payment for order #' . $order->get_id() . ' with session ' . substr($session_id, 0, 12) . '...');
-        // 🐞 Debug log forzato (Tappa 5)
+        $this->log('[NGE] process_embedded_payment for order #' . $order->get_id() . ' with session ' . substr($session_id, 0, 12) . '...');
+        // Debug log
 
         $logger = wc_get_logger();
         $logger->info(
-            sprintf('[Tappa5] Order #%d session %s...', $order->get_id(), substr($session_id, 0, 12)),
+            sprintf('[NGE] Order #%d session %s...', $order->get_id(), substr($session_id, 0, 12)),
             ['source' => 'ngenius-embedded-debug']
         );
 
@@ -553,7 +554,7 @@ class NgeniusEmbeddedGateway extends NgeniusEmbeddedAbstract
         $token = $token_class->get_access_token();
         if (!$token || is_wp_error($token)) {
             $errMsg = is_wp_error($token) ? $token->get_error_message() : 'Could not get access token';
-            $this->log('[Tappa 5] Token error: ' . $errMsg, 'error');
+            $this->log('[NGE] Token error: ' . $errMsg, 'error');
             $this->checkoutErrorThrow('Payment failed: authentication error.');
         }
         $config->set_token($token);
@@ -562,10 +563,10 @@ class NgeniusEmbeddedGateway extends NgeniusEmbeddedAbstract
         $request_class = new NgeniusEmbeddedGatewayRequestHostedSession($config);
         $built = ["token" => $config->get_token(), "request" => $request_class->get_build_array($order, $session_id)];
 
-        $this->log('[Tappa 5] POST ' . $built['request']['uri']);
+        $this->log('[NGE] POST ' . $built['request']['uri']);
 
         $logger->info(
-            sprintf('[Tappa5] POST %s | Body: %s',
+            sprintf('[NGE] POST %s | Body: %s',
                 $built['request']['uri'],
                 wp_json_encode($built['request']['data'])
             ),
@@ -585,15 +586,15 @@ class NgeniusEmbeddedGateway extends NgeniusEmbeddedAbstract
 
         if (is_wp_error($response)) {
             $errMsg = $response->get_error_message();
-            $this->log('[Tappa 5] HTTP error: ' . $errMsg, 'error');
-            $logger->error('[Tappa5] HTTP error: ' . $errMsg, ['source' => 'ngenius-embedded-debug']);
+            $this->log('[NGE] HTTP error: ' . $errMsg, 'error');
+            $logger->error('[NGE] HTTP error: ' . $errMsg, ['source' => 'ngenius-embedded-debug']);
 
-        $logger->info('[Tappa5] Full response: ' . wp_json_encode($response), ['source' => 'ngenius-embedded-debug']);
+        $logger->info('[NGE] Full response: ' . wp_json_encode($response), ['source' => 'ngenius-embedded-debug']);
             $order->update_status('failed', 'N-Genius embedded error: ' . $errMsg);
             $this->checkoutErrorThrow($errMsg);
         }
 
-        $this->log('[Tappa 5] N-Genius response state: ' . ($response['state'] ?? 'unknown'));
+        $this->log('[NGE] N-Genius response state: ' . ($response['state'] ?? 'unknown'));
 
         // Save data for our custom table (used by webhook/refund logic)
         global $wp_session;
@@ -667,7 +668,7 @@ class NgeniusEmbeddedGateway extends NgeniusEmbeddedAbstract
         // FAILED / DECLINED / other
         $failMsg = 'Payment was declined (state: ' . $state . ').';
         $order->update_status('failed', 'N-Genius embedded: ' . $failMsg);
-        $this->log('[Tappa 5] Payment failed: ' . $failMsg, 'error');
+        $this->log('[NGE] Payment failed: ' . $failMsg, 'error');
         $this->checkoutErrorThrow($failMsg);
 
         return [];
@@ -1065,6 +1066,42 @@ class NgeniusEmbeddedGateway extends NgeniusEmbeddedAbstract
             . '<img src="' . esc_url($plugin_url . 'resources/cards/mastercard.svg') . '" alt="Mastercard" style="height:18px;" onerror="this.style.display=\'none\'" />'
             . '</span>';
         return $title . $logos_html;
+    }
+
+    /**
+     * Preload N-Genius SDK on checkout pages so the browser starts the
+     * download in parallel with other resources, instead of waiting for
+     * our embedded-checkout.js to request it.
+     */
+    public function preload_sdk()
+    {
+        // Solo sul checkout
+        if (!function_exists('is_checkout') || !is_checkout()) {
+            return;
+        }
+        // Solo se embedded mode è ON
+        if ($this->get_option('embedded_mode') !== 'yes') {
+            return;
+        }
+        $environment = $this->get_option('environment') === 'uat' ? 'uat' : 'live';
+        $sdk_url = ($environment === 'uat')
+            ? 'https://paypage.sandbox.ngenius-payments.com/hosted-sessions/sdk.js'
+            : 'https://paypage.ngenius-payments.com/hosted-sessions/sdk.js';
+        // Origin for preconnect (paypage host)
+        $origin = parse_url($sdk_url, PHP_URL_SCHEME) . '://' . parse_url($sdk_url, PHP_URL_HOST);
+
+        printf(
+            '<link rel="dns-prefetch" href="%s">' . "\n",
+            esc_url($origin)
+        );
+        printf(
+            '<link rel="preconnect" href="%s" crossorigin="anonymous">' . "\n",
+            esc_url($origin)
+        );
+        printf(
+            '<link rel="preload" href="%s" as="script" crossorigin="anonymous">' . "\n",
+            esc_url($sdk_url)
+        );
     }
 
     public function get_icon()

@@ -35,11 +35,6 @@ class NgeniusEmbeddedGatewayHttpHostedSession extends NgeniusEmbeddedGatewayHttp
                 return new WP_Error('ngenius_error', 'Invalid response from gateway.');
             }
 
-            wc_get_logger()->info(
-                '[Tappa5 RAW]: ' . wp_json_encode($response),
-                ['source' => 'ngenius-embedded-debug']
-            );
-
             if (isset($response->errors) && is_array($response->errors)) {
                 $msg = $response->errors[0]->message ?? 'Unknown error';
                 return new WP_Error('ngenius_error', 'N-Genius: ' . $msg);
